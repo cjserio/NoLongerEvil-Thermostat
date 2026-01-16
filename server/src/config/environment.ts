@@ -75,7 +75,7 @@ export const environment: EnvironmentConfig = {
   ENTRY_KEY_TTL_SECONDS: getEnvInt('ENTRY_KEY_TTL_SECONDS', 3600),
   WEATHER_CACHE_TTL_MS: getEnvInt('WEATHER_CACHE_TTL_MS', 10 * 60 * 1000), // 10 minutes
 
-  SUBSCRIPTION_TIMEOUT_MS: process.env.SUBSCRIPTION_TIMEOUT_MS ? parseInt(process.env.SUBSCRIPTION_TIMEOUT_MS, 10) : Number.POSITIVE_INFINITY, // Default: No timeout
+  SUBSCRIPTION_TIMEOUT_MS: process.env.SUBSCRIPTION_TIMEOUT_MS ? parseInt(process.env.SUBSCRIPTION_TIMEOUT_MS, 10) : 30000, // Default: 30 seconds per RFC 6202
   MAX_SUBSCRIPTIONS_PER_DEVICE: getEnvInt('MAX_SUBSCRIPTIONS_PER_DEVICE', 100),
 
   DEBUG_LOGGING: getEnvBoolean('DEBUG_LOGGING', false),
