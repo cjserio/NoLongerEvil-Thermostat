@@ -170,7 +170,7 @@ async function handleDeviceRequest(req: http.IncomingMessage, res: http.ServerRe
       }
       // Mark device as seen (availability heartbeat)
       availabilityWatchdog.markSeen(serial);
-      await handlePut(req, res, serial, body, deviceStateService, deviceStateManager);
+      await handlePut(req, res, serial, body, deviceStateService, subscriptionManager, deviceStateManager);
       return;
     }
 

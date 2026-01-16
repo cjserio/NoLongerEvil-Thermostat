@@ -209,6 +209,7 @@ export async function handlePut(
   serial: string,
   body: any,
   deviceState: DeviceStateService,
+  subscriptionManager: SubscriptionManager,
   deviceStateManager: AbstractDeviceStateManager
 ): Promise<void> {
   const { objects } = body;
