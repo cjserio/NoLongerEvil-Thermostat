@@ -233,7 +233,8 @@ export class SubscriptionManager {
           if (!sub.res.writableEnded && !sub.res.destroyed) {
             try {
               console.log(`[${new Date().toISOString()}] [SubscriptionManager] Timed out subscription for ${serial} (age: ${Math.round(age / 1000)}s)`);
-              // Just close the connection - device will reconnect on its own
+              // Send valid empty response so device knows to reconnect
+              sub.res.write(JSON.stringify({ objects: [] }) + '\r\n');
               sub.res.end();
             } catch (error) {
               // Ignore errors if connection is already gone
