@@ -183,8 +183,14 @@ export class SubscriptionManager {
           if (!sub.res.writableEnded && !sub.res.destroyed) {
             try {
               console.log(`[${new Date().toISOString()}] [SubscriptionManager] Timed out subscription for ${serial} (age: ${Math.round(age / 1000)}s)`);
-              sub.res.writeHead(408, { 'Content-Type': 'text/plain' });
-              sub.res.end('Request Timeout');
+              // Send 200 OK with empty objects array so device treats this as normal response and reconnects
+              // Per RFC 6202, timeout responses should use 200 OK, not error codes
+              const timeoutResponse = JSON.stringify({ objects: [] }) + '\r\n';
+              sub.res.writeHead(200, {
+                'Content-Type': 'application/json; charset=UTF-8',
+                'X-nl-service-timestamp': Date.now().toString()
+              });
+              sub.res.end(timeoutResponse);
             } catch (error) {
               // Ignore errors if connection is already gone
             }
