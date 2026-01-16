@@ -268,11 +268,12 @@ export class SubscriptionManager {
    * but keeps the TCP connection alive through NAT
    */
   private sendKeepAlive(): void {
-    let sent = 0;
-    let failed = 0;
+    const results: { serial: string; sent: number; failed: number }[] = [];
 
     for (const [serial, subscribers] of this.subscriptions.entries()) {
       const activeSubscribers: Subscription[] = [];
+      let serialSent = 0;
+      let serialFailed = 0;
 
       for (const sub of subscribers) {
         if (sub.res.writableEnded || sub.res.destroyed) {
@@ -284,11 +285,11 @@ export class SubscriptionManager {
           // Send a newline as keep-alive - JSON parsers ignore leading whitespace
           sub.res.write('\n');
           activeSubscribers.push(sub);
-          sent++;
+          serialSent++;
         } catch (error) {
           // Connection is dead, will be cleaned up
           console.log(`[SubscriptionManager] Keep-alive failed for ${serial}, connection dead`);
-          failed++;
+          serialFailed++;
         }
       }
 
@@ -298,10 +299,15 @@ export class SubscriptionManager {
       } else {
         this.subscriptions.delete(serial);
       }
+
+      if (serialSent > 0 || serialFailed > 0) {
+        results.push({ serial, sent: serialSent, failed: serialFailed });
+      }
     }
 
-    if (sent > 0 || failed > 0) {
-      console.log(`[${new Date().toISOString()}] [SubscriptionManager] Keep-alive: sent ${sent}, failed ${failed}`);
+    if (results.length > 0) {
+      const summary = results.map(r => `${r.serial}:${r.sent}ok/${r.failed}fail`).join(', ');
+      console.log(`[${new Date().toISOString()}] [SubscriptionManager] Keep-alive: ${summary}`);
     }
   }
 
