@@ -7,6 +7,7 @@
  * Key responsibilities:
  * - Track subscriptions per device serial
  * - Notify subscribers when state changes
+ * - Send periodic keepalives to prevent NAT/firewall timeouts
  * - Clean up stale/closed connections
  * - Enforce subscription limits to prevent resource exhaustion
  */
@@ -14,13 +15,19 @@
 import type { Subscription, DeviceObject, NotificationResult } from '../lib/types';
 import { environment } from '../config/environment';
 
+// Keepalive interval in milliseconds (25 seconds - under typical NAT timeout of 30-60s)
+const KEEPALIVE_INTERVAL_MS = 25 * 1000;
+
 export class SubscriptionManager {
   private subscriptions: Map<string, Subscription[]> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private keepaliveInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     // Start cleanup timer
     this.startCleanupTimer();
+    // Start keepalive timer
+    this.startKeepaliveTimer();
   }
 
   /**
@@ -165,8 +172,51 @@ export class SubscriptionManager {
   }
 
   /**
+   * Send keepalive to all active subscriptions
+   * Sends empty chunk to keep connections alive without closing them
+   * This prevents NAT/firewall timeouts on idle connections
+   */
+  private sendKeepalives(): void {
+    let keepalivesSent = 0;
+    let connectionsRemoved = 0;
+
+    for (const [serial, subscribers] of this.subscriptions.entries()) {
+      const active: Subscription[] = [];
+
+      for (const sub of subscribers) {
+        if (sub.res.writableEnded || sub.res.destroyed) {
+          connectionsRemoved++;
+          continue;
+        }
+
+        try {
+          // Send empty chunk - keeps connection alive without closing
+          // This is valid with chunked transfer encoding
+          sub.res.write('');
+          keepalivesSent++;
+          active.push(sub);
+        } catch (error) {
+          // Connection is dead, will be cleaned up
+          connectionsRemoved++;
+        }
+      }
+
+      if (active.length > 0) {
+        this.subscriptions.set(serial, active);
+      } else {
+        this.subscriptions.delete(serial);
+      }
+    }
+
+    if (keepalivesSent > 0 || connectionsRemoved > 0) {
+      console.log(`[${new Date().toISOString()}] [SubscriptionManager] Keepalive: sent to ${keepalivesSent} subscription(s), removed ${connectionsRemoved} dead connection(s)`);
+    }
+  }
+
+  /**
    * Clean up stale subscriptions
    * Removes subscriptions older than SUBSCRIPTION_TIMEOUT_MS
+   * This is a safety net - keepalives should normally keep connections fresh
    */
   cleanupStale(): number {
     const now = Date.now();
@@ -183,14 +233,8 @@ export class SubscriptionManager {
           if (!sub.res.writableEnded && !sub.res.destroyed) {
             try {
               console.log(`[${new Date().toISOString()}] [SubscriptionManager] Timed out subscription for ${serial} (age: ${Math.round(age / 1000)}s)`);
-              // Send 200 OK with empty objects array so device treats this as normal response and reconnects
-              // Per RFC 6202, timeout responses should use 200 OK, not error codes
-              const timeoutResponse = JSON.stringify({ objects: [] }) + '\r\n';
-              sub.res.writeHead(200, {
-                'Content-Type': 'application/json; charset=UTF-8',
-                'X-nl-service-timestamp': Date.now().toString()
-              });
-              sub.res.end(timeoutResponse);
+              // Just close the connection - device will reconnect on its own
+              sub.res.end();
             } catch (error) {
               // Ignore errors if connection is already gone
             }
@@ -252,6 +296,18 @@ export class SubscriptionManager {
   }
 
   /**
+   * Start keepalive timer
+   * Sends empty chunks to all subscriptions to prevent NAT/firewall timeouts
+   */
+  private startKeepaliveTimer(): void {
+    this.keepaliveInterval = setInterval(() => {
+      this.sendKeepalives();
+    }, KEEPALIVE_INTERVAL_MS);
+
+    console.log(`[SubscriptionManager] Keepalive timer started (interval: ${KEEPALIVE_INTERVAL_MS / 1000}s)`);
+  }
+
+  /**
    * Stop cleanup timer (for graceful shutdown)
    */
   stopCleanupTimer(): void {
@@ -263,19 +319,30 @@ export class SubscriptionManager {
   }
 
   /**
+   * Stop keepalive timer (for graceful shutdown)
+   */
+  stopKeepaliveTimer(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
+      console.log('[SubscriptionManager] Keepalive timer stopped');
+    }
+  }
+
+  /**
    * Graceful shutdown: close all subscriptions
    */
   async shutdown(): Promise<void> {
     console.log('[SubscriptionManager] Shutting down...');
 
     this.stopCleanupTimer();
+    this.stopKeepaliveTimer();
 
     for (const [_serial, subscribers] of this.subscriptions.entries()) {
       for (const sub of subscribers) {
         if (!sub.res.writableEnded && !sub.res.destroyed) {
           try {
-            sub.res.writeHead(503, { 'Content-Type': 'text/plain' });
-            sub.res.end('Server shutting down');
+            sub.res.end();
           } catch (error) {
           }
         }
