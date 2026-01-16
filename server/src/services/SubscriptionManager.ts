@@ -17,10 +17,13 @@ import { environment } from '../config/environment';
 export class SubscriptionManager {
   private subscriptions: Map<string, Subscription[]> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private keepAliveInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     // Start cleanup timer
     this.startCleanupTimer();
+    // Start keep-alive timer to prevent NAT timeouts
+    this.startKeepAliveTimer();
   }
 
   /**
@@ -246,6 +249,63 @@ export class SubscriptionManager {
   }
 
   /**
+   * Start keep-alive timer to prevent NAT timeouts
+   * Sends a small ping to all active subscriptions periodically
+   */
+  private startKeepAliveTimer(): void {
+    const interval = environment.KEEP_ALIVE_INTERVAL_MS;
+
+    this.keepAliveInterval = setInterval(() => {
+      this.sendKeepAlive();
+    }, interval);
+
+    console.log(`[SubscriptionManager] Keep-alive timer started (interval: ${interval}ms)`);
+  }
+
+  /**
+   * Send keep-alive ping to all active subscriptions
+   * Sends a newline character which is ignored by JSON parsers
+   * but keeps the TCP connection alive through NAT
+   */
+  private sendKeepAlive(): void {
+    let sent = 0;
+    let failed = 0;
+
+    for (const [serial, subscribers] of this.subscriptions.entries()) {
+      const activeSubscribers: Subscription[] = [];
+
+      for (const sub of subscribers) {
+        if (sub.res.writableEnded || sub.res.destroyed) {
+          // Connection already closed, skip
+          continue;
+        }
+
+        try {
+          // Send a newline as keep-alive - JSON parsers ignore leading whitespace
+          sub.res.write('\n');
+          activeSubscribers.push(sub);
+          sent++;
+        } catch (error) {
+          // Connection is dead, will be cleaned up
+          console.log(`[SubscriptionManager] Keep-alive failed for ${serial}, connection dead`);
+          failed++;
+        }
+      }
+
+      // Update subscribers list to remove dead connections
+      if (activeSubscribers.length > 0) {
+        this.subscriptions.set(serial, activeSubscribers);
+      } else {
+        this.subscriptions.delete(serial);
+      }
+    }
+
+    if (sent > 0 || failed > 0) {
+      console.log(`[${new Date().toISOString()}] [SubscriptionManager] Keep-alive: sent ${sent}, failed ${failed}`);
+    }
+  }
+
+  /**
    * Stop cleanup timer (for graceful shutdown)
    */
   stopCleanupTimer(): void {
@@ -257,12 +317,24 @@ export class SubscriptionManager {
   }
 
   /**
+   * Stop keep-alive timer (for graceful shutdown)
+   */
+  stopKeepAliveTimer(): void {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+      console.log('[SubscriptionManager] Keep-alive timer stopped');
+    }
+  }
+
+  /**
    * Graceful shutdown: close all subscriptions
    */
   async shutdown(): Promise<void> {
     console.log('[SubscriptionManager] Shutting down...');
 
     this.stopCleanupTimer();
+    this.stopKeepAliveTimer();
 
     for (const [_serial, subscribers] of this.subscriptions.entries()) {
       for (const sub of subscribers) {

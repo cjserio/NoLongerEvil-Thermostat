@@ -76,6 +76,7 @@ export const environment: EnvironmentConfig = {
   WEATHER_CACHE_TTL_MS: getEnvInt('WEATHER_CACHE_TTL_MS', 10 * 60 * 1000), // 10 minutes
 
   SUBSCRIPTION_TIMEOUT_MS: process.env.SUBSCRIPTION_TIMEOUT_MS ? parseInt(process.env.SUBSCRIPTION_TIMEOUT_MS, 10) : Number.POSITIVE_INFINITY, // Default: No timeout
+  KEEP_ALIVE_INTERVAL_MS: getEnvInt('KEEP_ALIVE_INTERVAL_MS', 30000), // Default: 30 seconds
   MAX_SUBSCRIPTIONS_PER_DEVICE: getEnvInt('MAX_SUBSCRIPTIONS_PER_DEVICE', 100),
 
   DEBUG_LOGGING: getEnvBoolean('DEBUG_LOGGING', false),

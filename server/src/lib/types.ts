@@ -132,6 +132,7 @@ export interface EnvironmentConfig {
   ENTRY_KEY_TTL_SECONDS: number;
   WEATHER_CACHE_TTL_MS: number;
   SUBSCRIPTION_TIMEOUT_MS: number;
+  KEEP_ALIVE_INTERVAL_MS: number;
   MAX_SUBSCRIPTIONS_PER_DEVICE: number;
   DEBUG_LOGGING: boolean;
   DEBUG_LOGS_DIR: string;
