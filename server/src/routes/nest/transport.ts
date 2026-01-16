@@ -271,11 +271,10 @@ export async function handlePut(
     }
   }
 
-  // Note: We intentionally do NOT notify subscribers here.
-  // The device that sent the PUT already receives the response directly.
-  // External commands (from Home Assistant) use handleCommand which has its own notify() call.
+  const notifyResult = subscriptionManager.notifyAll(serial, responseObjects);
   console.log(
-    `[Transport/PUT] Processed ${responseObjects.length} object(s) for ${serial}`
+    `[Transport/PUT] Notified ${notifyResult.notified} subscriber(s) for ${serial}, ` +
+    `${responseObjects.length} object(s) updated`
   );
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
