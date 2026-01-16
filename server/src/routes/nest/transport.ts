@@ -252,14 +252,13 @@ export async function handlePut(
     serverObj = await deviceState.upsert(serial, object_key, newRevision, newTimestamp, mergedValue);
 
     const responseObj: any = {
+      serial: serial,
+      updatedAt: serverObj.updatedAt,
       object_revision: serverObj.object_revision,
       object_timestamp: serverObj.object_timestamp,
       object_key: serverObj.object_key,
+      value: serverObj.value,
     };
-
-    if (valuesChanged) {
-      responseObj.value = serverObj.value;
-    }
 
     responseObjects.push(responseObj);
   }
